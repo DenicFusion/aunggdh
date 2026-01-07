@@ -38,7 +38,7 @@ export const PublicFlow: React.FC = () => {
         
         // 1. Validate Paystack Key
         const publicKey = settings.paystack_public_key;
-        if (!publicKey || publicKey.includes('REPLACE_ME') || publicKey.length < 10) {
+        if (!publicKey || publicKey.includes('REPLACE_ME') || publicKey.length < 5) {
             alert("Configuration Error: Paystack Public Key is not set in Admin Settings.\n\nPlease login to /myadmin and set your 'pk_live_...' key.");
             setIsProcessing(false);
             return;
@@ -73,14 +73,15 @@ export const PublicFlow: React.FC = () => {
             return;
         }
 
-        // 5. Initialize Transaction
+        // 5. Initialize Transaction (Using newTransaction method)
         const transactionRef = '' + Math.floor((Math.random() * 1000000000) + 1);
 
-        const handler = PaystackPop.setup({
-            key: publicKey.trim(), // Ensure no whitespace
+        const paystack = new PaystackPop();
+        
+        paystack.newTransaction({
+            key: publicKey.trim(),
             email: email.trim(),
             amount: amountInKobo,
-            currency: 'NGN',
             ref: transactionRef,
             metadata: {
                 custom_fields: [
@@ -101,33 +102,34 @@ export const PublicFlow: React.FC = () => {
                     }
                 ]
             },
-            callback: async function(response: any) {
-                // Payment Successful
-                const newStudent: StudentProfile = student || {
-                    ...INITIAL_STUDENT_STATE,
-                    surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
-                    first_name: name.split(' ')[0] || '',
-                    email: email,
-                    post_utme_phone: phone,
-                    created_at: new Date().toISOString(),
-                    id: crypto.randomUUID()
+            onSuccess: (transaction: any) => {
+                // Wrap async logic here
+                const completeProcess = async () => {
+                    const newStudent: StudentProfile = student || {
+                        ...INITIAL_STUDENT_STATE,
+                        surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
+                        first_name: name.split(' ')[0] || '',
+                        email: email,
+                        post_utme_phone: phone,
+                        created_at: new Date().toISOString(),
+                        id: crypto.randomUUID()
+                    };
+                    
+                    newStudent.payment_status = 'paid';
+                    newStudent.payment_reference = transaction.reference;
+                    
+                    await createOrUpdateStudent(newStudent);
+                    setCurrentStudent(newStudent);
+                    setStep('form');
+                    setIsProcessing(false);
                 };
-                
-                newStudent.payment_status = 'paid';
-                newStudent.payment_reference = response.reference;
-                
-                await createOrUpdateStudent(newStudent);
-                setCurrentStudent(newStudent);
-                setStep('form');
-                setIsProcessing(false);
+                completeProcess();
             },
-            onClose: function() {
-                // User closed the popup
+            onCancel: () => {
+                // Reset processing state so user can try again
                 setIsProcessing(false);
             }
         });
-
-        handler.openIframe();
 
     } catch (err) {
         console.error("Payment Init Error:", err);
@@ -246,7 +248,7 @@ export const PublicFlow: React.FC = () => {
                             {isProcessing ? (
                                 <>
                                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    Processing...
+                                    Loading Payment...
                                 </>
                             ) : 'Pay & Proceed'}
                         </button>
