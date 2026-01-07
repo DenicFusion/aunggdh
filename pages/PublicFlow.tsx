@@ -5,9 +5,6 @@ import { SystemSettings, StudentProfile, INITIAL_STUDENT_STATE } from '../types'
 import { Input } from '../components/Input';
 import { ClearanceForm } from './ClearanceForm';
 
-// Paystack types
-declare const PaystackPop: any;
-
 export const PublicFlow: React.FC = () => {
   const [step, setStep] = useState<'landing' | 'init' | 'form' | 'success'>('landing');
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -23,7 +20,6 @@ export const PublicFlow: React.FC = () => {
 
   const handleStart = () => {
       setStep('init');
-      // Scroll to top
       window.scrollTo(0, 0);
   };
 
@@ -48,19 +44,24 @@ export const PublicFlow: React.FC = () => {
             return;
         }
 
-        // 2. Initialize Paystack
-        if (typeof PaystackPop === 'undefined') {
-            alert("Payment gateway not loaded. Please check your internet connection.");
+        // 2. Initialize Paystack (Standard Inline Method)
+        // @ts-ignore
+        const PaystackPop = window.PaystackPop;
+
+        if (!PaystackPop) {
+            alert("Paystack gateway failed to load. Please check your internet connection or disable ad-blockers.");
             setIsProcessing(false);
             return;
         }
 
-        const paystack = new PaystackPop();
-        paystack.newTransaction({
-            key: settings.paystack_public_key, // Uses Live Key from Settings
+        const transactionRef = '' + Math.floor((Math.random() * 1000000000) + 1);
+
+        const handler = PaystackPop.setup({
+            key: settings.paystack_public_key, // Public Key Only
             email: email,
             amount: settings.clearance_fee * 100, // Amount in Kobo
-            ref: ''+Math.floor((Math.random() * 1000000000) + 1), // Generate unique ref
+            currency: 'NGN',
+            ref: transactionRef,
             metadata: {
                 custom_fields: [
                     {
@@ -74,19 +75,14 @@ export const PublicFlow: React.FC = () => {
                         value: phone
                     },
                     {
-                        display_name: "Payment For",
-                        variable_name: "payment_for",
-                        value: "A&U NG Clearance"
-                    },
-                    {
                         display_name: "Session",
                         variable_name: "session",
                         value: settings.session_year
                     }
                 ]
             },
-            onSuccess: async (transaction: any) => {
-                // 3. Payment Successful - Create/Update Record
+            callback: async function(response: any) {
+                // Payment Successful
                 const newStudent: StudentProfile = student || {
                     ...INITIAL_STUDENT_STATE,
                     surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
@@ -98,17 +94,21 @@ export const PublicFlow: React.FC = () => {
                 };
                 
                 newStudent.payment_status = 'paid';
-                newStudent.payment_reference = transaction.reference;
+                newStudent.payment_reference = response.reference;
                 
                 await createOrUpdateStudent(newStudent);
                 setCurrentStudent(newStudent);
                 setStep('form');
                 setIsProcessing(false);
             },
-            onCancel: () => {
+            onClose: function() {
+                alert('Transaction was not completed.');
                 setIsProcessing(false);
             }
         });
+
+        handler.openIframe();
+
     } catch (err) {
         console.error(err);
         alert("An error occurred initializing payment. Please try again.");
@@ -166,7 +166,7 @@ export const PublicFlow: React.FC = () => {
             Start Clearance Process
           </button>
           
-          <div className="mt-20"></div> {/* Spacer for footer */}
+          <div className="mt-20"></div>
         </div>
       )}
 

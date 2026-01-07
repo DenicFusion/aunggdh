@@ -59,12 +59,7 @@ export const AdminSettings: React.FC = () => {
                     label="Public Key" 
                     value={settings.paystack_public_key} 
                     onChange={(e) => handleChange('paystack_public_key', e.target.value)}
-                />
-                <Input 
-                    label="Secret Key" 
-                    type="password"
-                    value={settings.paystack_secret_key} 
-                    onChange={(e) => handleChange('paystack_secret_key', e.target.value)}
+                    helperText="Enter your Live Public Key (pk_live_...)"
                 />
             </div>
         </div>
