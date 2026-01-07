@@ -55,7 +55,7 @@ export const PublicFlow: React.FC = () => {
         // 3. Check for Paystack SDK
         // @ts-ignore
         const PaystackPop = window.PaystackPop;
-        if (!PaystackPop) {
+        if (!PaystackPop || typeof PaystackPop.setup !== 'function') {
             alert("Connection Error: Paystack gateway failed to load.\n\nPlease check your internet connection and ensure you are not using an ad-blocker.");
             setIsProcessing(false);
             return;
@@ -73,15 +73,15 @@ export const PublicFlow: React.FC = () => {
             return;
         }
 
-        // 5. Initialize Transaction (Using newTransaction method)
+        // 5. Initialize Transaction
         const transactionRef = '' + Math.floor((Math.random() * 1000000000) + 1);
 
-        const paystack = new PaystackPop();
-        
-        paystack.newTransaction({
+        // Standard Paystack V1 Inline Implementation
+        const handler = PaystackPop.setup({
             key: publicKey.trim(),
             email: email.trim(),
             amount: amountInKobo,
+            currency: 'NGN',
             ref: transactionRef,
             metadata: {
                 custom_fields: [
@@ -102,34 +102,41 @@ export const PublicFlow: React.FC = () => {
                     }
                 ]
             },
-            onSuccess: (transaction: any) => {
-                // Wrap async logic here
+            // Strictly defined callback function (not async directly to avoid library validation errors)
+            callback: function(response: any) {
+                // Execute async logic internally
                 const completeProcess = async () => {
-                    const newStudent: StudentProfile = student || {
-                        ...INITIAL_STUDENT_STATE,
-                        surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
-                        first_name: name.split(' ')[0] || '',
-                        email: email,
-                        post_utme_phone: phone,
-                        created_at: new Date().toISOString(),
-                        id: crypto.randomUUID()
-                    };
-                    
-                    newStudent.payment_status = 'paid';
-                    newStudent.payment_reference = transaction.reference;
-                    
-                    await createOrUpdateStudent(newStudent);
-                    setCurrentStudent(newStudent);
-                    setStep('form');
-                    setIsProcessing(false);
+                    try {
+                        const newStudent: StudentProfile = student || {
+                            ...INITIAL_STUDENT_STATE,
+                            surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
+                            first_name: name.split(' ')[0] || '',
+                            email: email,
+                            post_utme_phone: phone,
+                            created_at: new Date().toISOString(),
+                            id: crypto.randomUUID()
+                        };
+                        
+                        newStudent.payment_status = 'paid';
+                        newStudent.payment_reference = response.reference;
+                        
+                        await createOrUpdateStudent(newStudent);
+                        setCurrentStudent(newStudent);
+                        setStep('form');
+                    } catch (error) {
+                        alert('Payment verified but failed to save record. Please contact support with reference: ' + response.reference);
+                    } finally {
+                        setIsProcessing(false);
+                    }
                 };
                 completeProcess();
             },
-            onCancel: () => {
-                // Reset processing state so user can try again
+            onClose: function() {
                 setIsProcessing(false);
             }
         });
+
+        handler.openIframe();
 
     } catch (err) {
         console.error("Payment Init Error:", err);
