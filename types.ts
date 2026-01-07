@@ -19,7 +19,6 @@ export interface SystemSettings {
   clearance_fee: number;
   payment_deadline: string;
   paystack_public_key: string;
-  // Removed secret key as requested for pure client-side integration
   payments_enabled: boolean;
   submissions_enabled: boolean;
 }
@@ -105,7 +104,8 @@ export const INITIAL_SETTINGS: SystemSettings = {
   session_year: getEnv('NEXT_PUBLIC_SESSION_YEAR', 'VITE_SESSION_YEAR') || '2025/2026',
   clearance_fee: Number(getEnv('NEXT_PUBLIC_CLEARANCE_FEE', 'VITE_CLEARANCE_FEE')) || 99000,
   payment_deadline: getEnv('NEXT_PUBLIC_PAYMENT_DEADLINE', 'VITE_PAYMENT_DEADLINE') || '2025-12-31',
-  paystack_public_key: getEnv('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY', 'VITE_PAYSTACK_PUBLIC_KEY') || 'pk_live_DEMO_KEY_REPLACE_ME',
+  // Defaults to empty string so our validation logic detects it immediately
+  paystack_public_key: getEnv('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY', 'VITE_PAYSTACK_PUBLIC_KEY') || '',
   payments_enabled: true,
   submissions_enabled: true,
 };

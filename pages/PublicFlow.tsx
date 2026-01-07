@@ -26,7 +26,7 @@ export const PublicFlow: React.FC = () => {
   const initPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) {
-        alert("System settings not loaded. Please refresh.");
+        alert("System settings not loaded. Please refresh the page.");
         return;
     }
 
@@ -34,7 +34,36 @@ export const PublicFlow: React.FC = () => {
     setIsProcessing(true);
 
     try {
-        // 1. Check if student already paid
+        // --- VALIDATION BLOCK START ---
+        
+        // 1. Validate Paystack Key
+        const publicKey = settings.paystack_public_key;
+        if (!publicKey || publicKey.includes('REPLACE_ME') || publicKey.length < 10) {
+            alert("Configuration Error: Paystack Public Key is not set in Admin Settings.\n\nPlease login to /myadmin and set your 'pk_live_...' key.");
+            setIsProcessing(false);
+            return;
+        }
+
+        // 2. Validate Amount
+        const amountInKobo = Math.floor(Number(settings.clearance_fee) * 100);
+        if (isNaN(amountInKobo) || amountInKobo <= 0) {
+            alert("Configuration Error: Clearance fee is invalid. Please check Admin Settings.");
+            setIsProcessing(false);
+            return;
+        }
+
+        // 3. Check for Paystack SDK
+        // @ts-ignore
+        const PaystackPop = window.PaystackPop;
+        if (!PaystackPop) {
+            alert("Connection Error: Paystack gateway failed to load.\n\nPlease check your internet connection and ensure you are not using an ad-blocker.");
+            setIsProcessing(false);
+            return;
+        }
+
+        // --- VALIDATION BLOCK END ---
+
+        // 4. Check if student already paid (Idempotency)
         let student = await getStudentByEmail(email);
         
         if (student && student.payment_status === 'paid') {
@@ -44,22 +73,13 @@ export const PublicFlow: React.FC = () => {
             return;
         }
 
-        // 2. Initialize Paystack (Standard Inline Method)
-        // @ts-ignore
-        const PaystackPop = window.PaystackPop;
-
-        if (!PaystackPop) {
-            alert("Paystack gateway failed to load. Please check your internet connection or disable ad-blockers.");
-            setIsProcessing(false);
-            return;
-        }
-
+        // 5. Initialize Transaction
         const transactionRef = '' + Math.floor((Math.random() * 1000000000) + 1);
 
         const handler = PaystackPop.setup({
-            key: settings.paystack_public_key, // Public Key Only
-            email: email,
-            amount: settings.clearance_fee * 100, // Amount in Kobo
+            key: publicKey.trim(), // Ensure no whitespace
+            email: email.trim(),
+            amount: amountInKobo,
             currency: 'NGN',
             ref: transactionRef,
             metadata: {
@@ -102,7 +122,7 @@ export const PublicFlow: React.FC = () => {
                 setIsProcessing(false);
             },
             onClose: function() {
-                alert('Transaction was not completed.');
+                // User closed the popup
                 setIsProcessing(false);
             }
         });
@@ -110,8 +130,8 @@ export const PublicFlow: React.FC = () => {
         handler.openIframe();
 
     } catch (err) {
-        console.error(err);
-        alert("An error occurred initializing payment. Please try again.");
+        console.error("Payment Init Error:", err);
+        alert(`System Error: ${err instanceof Error ? err.message : 'Unknown payment initialization error.'}`);
         setIsProcessing(false);
     }
   };
