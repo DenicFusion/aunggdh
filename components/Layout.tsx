@@ -20,9 +20,10 @@ export const Header: React.FC = () => (
 );
 
 export const Footer: React.FC = () => (
-  <footer className="bg-gray-800 text-gray-300 py-6 mt-auto">
-    <div className="max-w-7xl mx-auto px-4 text-center text-sm">
-      <p>&copy; {new Date().getFullYear()} A&U NG. Powered by Supabase & Paystack.</p>
+  <footer className="bg-white border-t border-gray-200 text-gray-500 py-8 mt-auto">
+    <div className="max-w-7xl mx-auto px-4 text-center">
+      <p className="text-sm font-medium mb-2">&copy; {new Date().getFullYear()} A&U NG Admission Office.</p>
+      <p className="text-xs text-gray-400">Powered by <span className="font-bold text-indigo-600">EmzzyTech</span></p>
     </div>
   </footer>
 );
