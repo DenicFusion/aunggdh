@@ -19,7 +19,7 @@ export interface SystemSettings {
   clearance_fee: number;
   payment_deadline: string;
   paystack_public_key: string;
-  paystack_secret_key: string; // Only used in Edge Functions usually, but stored here for admin editing
+  paystack_secret_key: string; 
   payments_enabled: boolean;
   submissions_enabled: boolean;
 }
@@ -57,7 +57,7 @@ export interface StudentProfile {
   religion: string;
   post_utme_phone: string;
   email: string; // Post-UTME Email
-  email_password_placeholder?: string; // Not real password storage, just for the form field request
+  email_password_placeholder?: string; // Not real password storage
   jamb_email?: string;
   jamb_password_placeholder?: string;
   contact_address: string;
@@ -105,9 +105,9 @@ export const INITIAL_SETTINGS: SystemSettings = {
   session_year: getEnv('NEXT_PUBLIC_SESSION_YEAR', 'VITE_SESSION_YEAR') || '2025/2026',
   clearance_fee: Number(getEnv('NEXT_PUBLIC_CLEARANCE_FEE', 'VITE_CLEARANCE_FEE')) || 99000,
   payment_deadline: getEnv('NEXT_PUBLIC_PAYMENT_DEADLINE', 'VITE_PAYMENT_DEADLINE') || '2025-12-31',
-  // Automatically grab Keys from Environment if present
-  paystack_public_key: getEnv('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY', 'VITE_PAYSTACK_PUBLIC_KEY') || 'pk_test_xxxxxxxxxxxxxxxxxxxx',
-  paystack_secret_key: getEnv('PAYSTACK_SECRET_KEY', 'VITE_PAYSTACK_SECRET_KEY') || 'sk_test_xxxxxxxxxxxxxxxxxxxx',
+  // Default to a placeholder if not found, but logic will check if it's set
+  paystack_public_key: getEnv('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY', 'VITE_PAYSTACK_PUBLIC_KEY') || 'pk_live_DEMO_KEY_REPLACE_ME',
+  paystack_secret_key: getEnv('PAYSTACK_SECRET_KEY', 'VITE_PAYSTACK_SECRET_KEY') || '',
   payments_enabled: true,
   submissions_enabled: true,
 };

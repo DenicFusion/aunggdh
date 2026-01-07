@@ -15,6 +15,7 @@ export const PublicFlow: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [currentStudent, setCurrentStudent] = useState<StudentProfile | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     getSystemSettings().then(setSettings);
@@ -22,139 +23,229 @@ export const PublicFlow: React.FC = () => {
 
   const handleStart = () => {
       setStep('init');
+      // Scroll to top
+      window.scrollTo(0, 0);
   };
 
   const initPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settings) return;
-
-    // Check if student exists
-    let student = await getStudentByEmail(email);
-    
-    if (student && student.payment_status === 'paid') {
-        setCurrentStudent(student);
-        setStep('form');
+    if (!settings) {
+        alert("System settings not loaded. Please refresh.");
         return;
     }
 
-    // Init Paystack
-    const paystack = new PaystackPop();
-    paystack.newTransaction({
-        key: settings.paystack_public_key,
-        email: email,
-        amount: settings.clearance_fee * 100, // Kobo
-        ref: ''+Math.floor((Math.random() * 1000000000) + 1),
-        metadata: {
-            custom_fields: [
-                {
-                    display_name: "Payment For",
-                    variable_name: "payment_for",
-                    value: "A&U NG Clearance"
-                },
-                {
-                    display_name: "Session",
-                    variable_name: "session",
-                    value: settings.session_year
-                }
-            ]
-        },
-        onSuccess: async (transaction: any) => {
-            // Payment success
-            const newStudent: StudentProfile = student || {
-                ...INITIAL_STUDENT_STATE,
-                surname: name.split(' ')[1] || '',
-                first_name: name.split(' ')[0] || '',
-                email: email,
-                post_utme_phone: phone,
-                created_at: new Date().toISOString(),
-                id: crypto.randomUUID()
-            };
-            
-            newStudent.payment_status = 'paid';
-            newStudent.payment_reference = transaction.reference;
-            
-            await createOrUpdateStudent(newStudent);
-            setCurrentStudent(newStudent);
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+        // 1. Check if student already paid
+        let student = await getStudentByEmail(email);
+        
+        if (student && student.payment_status === 'paid') {
+            setCurrentStudent(student);
             setStep('form');
-        },
-        onCancel: () => {
-            alert('Payment cancelled.');
+            setIsProcessing(false);
+            return;
         }
-    });
+
+        // 2. Initialize Paystack
+        if (typeof PaystackPop === 'undefined') {
+            alert("Payment gateway not loaded. Please check your internet connection.");
+            setIsProcessing(false);
+            return;
+        }
+
+        const paystack = new PaystackPop();
+        paystack.newTransaction({
+            key: settings.paystack_public_key, // Uses Live Key from Settings
+            email: email,
+            amount: settings.clearance_fee * 100, // Amount in Kobo
+            ref: ''+Math.floor((Math.random() * 1000000000) + 1), // Generate unique ref
+            metadata: {
+                custom_fields: [
+                    {
+                        display_name: "Student Name",
+                        variable_name: "student_name",
+                        value: name
+                    },
+                    {
+                        display_name: "Phone Number",
+                        variable_name: "phone_number",
+                        value: phone
+                    },
+                    {
+                        display_name: "Payment For",
+                        variable_name: "payment_for",
+                        value: "A&U NG Clearance"
+                    },
+                    {
+                        display_name: "Session",
+                        variable_name: "session",
+                        value: settings.session_year
+                    }
+                ]
+            },
+            onSuccess: async (transaction: any) => {
+                // 3. Payment Successful - Create/Update Record
+                const newStudent: StudentProfile = student || {
+                    ...INITIAL_STUDENT_STATE,
+                    surname: name.split(' ').slice(1).join(' ') || name.split(' ')[1] || '',
+                    first_name: name.split(' ')[0] || '',
+                    email: email,
+                    post_utme_phone: phone,
+                    created_at: new Date().toISOString(),
+                    id: crypto.randomUUID()
+                };
+                
+                newStudent.payment_status = 'paid';
+                newStudent.payment_reference = transaction.reference;
+                
+                await createOrUpdateStudent(newStudent);
+                setCurrentStudent(newStudent);
+                setStep('form');
+                setIsProcessing(false);
+            },
+            onCancel: () => {
+                setIsProcessing(false);
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        alert("An error occurred initializing payment. Please try again.");
+        setIsProcessing(false);
+    }
   };
 
-  if (!settings) return <div className="h-screen flex items-center justify-center font-medium text-gray-600">Loading A&U NG Portal...</div>;
+  // Loading State
+  if (!settings) return (
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 text-indigo-900">
+          <svg className="animate-spin h-10 w-10 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="font-semibold text-lg">Initializing Secure Portal...</span>
+      </div>
+  );
 
   return (
     <Layout>
       {step === 'landing' && (
-        <div className="flex flex-col items-center justify-center min-h-[85vh] px-4 text-center py-12">
-          <div className="bg-indigo-50 p-6 rounded-full mb-8 shadow-sm">
-            <svg className="w-16 h-16 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+        <div className="flex flex-col items-center justify-center min-h-[85vh] px-4 text-center py-16 md:py-24">
+          <div className="bg-white p-6 rounded-full mb-10 shadow-lg ring-1 ring-gray-100">
+            <svg className="w-16 h-16 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
           </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 max-w-3xl leading-tight">
-            Welcome to A&U NG
+          <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-6 max-w-4xl leading-tight tracking-tight">
+            Welcome to <span className="text-indigo-700">A&U NG</span>
           </h1>
-          <p className="text-xl md:text-2xl font-semibold text-indigo-600 mb-6">
+          <p className="text-xl md:text-2xl font-medium text-gray-600 mb-8 max-w-2xl mx-auto">
             Official 100 Level Clearance & Admission Acceptance Portal
           </p>
-          <p className="text-gray-600 text-lg mb-12 max-w-2xl leading-relaxed">
-            Congratulations on your admission! Start your clearance process for the <strong>{settings.session_year}</strong> academic session securely online.
+          <p className="text-gray-500 text-lg mb-12 max-w-xl mx-auto leading-relaxed">
+            Securely complete your clearance for the <strong>{settings.session_year}</strong> academic session. Please ensure you have your documents ready.
           </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-4xl mb-16">
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:border-indigo-300 transition-colors">
-                <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-2">Session</p>
-                <p className="text-2xl font-bold text-gray-800">{settings.session_year}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl mb-16 px-4">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center hover:shadow-md transition-shadow">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Academic Session</span>
+                <span className="text-3xl font-bold text-gray-900">{settings.session_year}</span>
             </div>
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:border-green-300 transition-colors">
-                <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-2">Acceptance Fee</p>
-                <p className="text-2xl font-bold text-green-600">₦{settings.clearance_fee.toLocaleString()}</p>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center hover:shadow-md transition-shadow">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Clearance Fee</span>
+                <span className="text-3xl font-bold text-green-600">₦{settings.clearance_fee.toLocaleString()}</span>
             </div>
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:border-red-300 transition-colors">
-                <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-2">Deadline</p>
-                <p className="text-2xl font-bold text-red-600">{settings.payment_deadline}</p>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center hover:shadow-md transition-shadow">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Closing Date</span>
+                <span className="text-3xl font-bold text-red-500">{settings.payment_deadline}</span>
             </div>
           </div>
 
           <button 
             onClick={handleStart}
-            className="bg-indigo-600 text-white px-10 py-5 rounded-xl text-xl font-bold hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 mb-12"
+            className="bg-indigo-700 text-white px-12 py-5 rounded-xl text-lg md:text-xl font-bold hover:bg-indigo-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 focus:ring-4 focus:ring-indigo-300"
           >
             Start Clearance Process
           </button>
+          
+          <div className="mt-20"></div> {/* Spacer for footer */}
         </div>
       )}
 
       {step === 'init' && (
-        <div className="max-w-md mx-auto mt-12 px-4 mb-20">
-            <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
-                <div className="mb-8 text-center">
-                    <h2 className="text-2xl font-bold text-gray-900">Student Verification</h2>
-                    <p className="text-gray-500 text-sm mt-2">Enter your details to initiate payment</p>
-                </div>
-                <form onSubmit={initPayment}>
-                    <Input label="Full Name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Surname Firstname" />
-                    <Input label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="jamb.email@example.com" />
-                    <Input label="Phone Number" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-                    
-                    <div className="bg-yellow-50 p-4 rounded-lg text-sm text-yellow-800 mb-8 border border-yellow-100">
-                        You will be redirected to Paystack to complete the <strong>₦{settings.clearance_fee.toLocaleString()}</strong> payment securely.
+        <div className="min-h-[80vh] flex flex-col justify-center py-12">
+            <div className="max-w-lg mx-auto w-full px-4">
+                <div className="bg-white p-8 md:p-10 rounded-2xl shadow-xl border border-gray-100">
+                    <div className="mb-8 text-center">
+                        <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        </div>
+                        <h2 className="text-3xl font-bold text-gray-900">Student Verification</h2>
+                        <p className="text-gray-500 mt-2">Enter your valid details to initiate payment.</p>
                     </div>
+                    
+                    <form onSubmit={initPayment} className="space-y-6">
+                        <Input 
+                            label="Full Name" 
+                            value={name} 
+                            onChange={(e) => setName(e.target.value)} 
+                            required 
+                            placeholder="Surname Firstname" 
+                            className="bg-gray-50 focus:bg-white text-lg"
+                        />
+                        <Input 
+                            label="Email Address" 
+                            type="email" 
+                            value={email} 
+                            onChange={(e) => setEmail(e.target.value)} 
+                            required 
+                            placeholder="jamb.email@example.com"
+                             className="bg-gray-50 focus:bg-white text-lg"
+                        />
+                        <Input 
+                            label="Phone Number" 
+                            type="tel" 
+                            value={phone} 
+                            onChange={(e) => setPhone(e.target.value)} 
+                            required 
+                             className="bg-gray-50 focus:bg-white text-lg"
+                        />
+                        
+                        <div className="bg-yellow-50 p-5 rounded-xl border border-yellow-100 flex items-start gap-3">
+                             <svg className="w-6 h-6 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <p className="text-sm text-yellow-800 leading-relaxed">
+                                You will be redirected to the secure <strong>Paystack</strong> gateway to complete the <strong>₦{settings.clearance_fee.toLocaleString()}</strong> acceptance fee.
+                            </p>
+                        </div>
 
-                    <button type="submit" className="w-full bg-green-600 text-white py-4 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">
-                        Pay & Proceed
-                    </button>
-                    <button onClick={() => setStep('landing')} type="button" className="w-full mt-4 text-gray-500 text-sm hover:text-gray-700 font-medium">
-                        Cancel
-                    </button>
-                </form>
+                        <button 
+                            type="submit" 
+                            disabled={isProcessing}
+                            className={`w-full py-4 rounded-xl font-bold text-white text-lg transition-all shadow-lg flex items-center justify-center
+                                ${isProcessing ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-xl hover:-translate-y-0.5'}
+                            `}
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    Processing...
+                                </>
+                            ) : 'Pay & Proceed'}
+                        </button>
+                        
+                        <button 
+                            onClick={() => setStep('landing')} 
+                            type="button" 
+                            className="w-full text-gray-400 text-sm hover:text-gray-600 font-medium transition-colors"
+                        >
+                            Cancel Transaction
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
       )}
 
       {step === 'form' && currentStudent && (
-        <div className="max-w-5xl mx-auto mt-8 px-4 pb-20">
+        <div className="max-w-5xl mx-auto mt-12 px-4 pb-24">
             <ClearanceForm 
                 student={currentStudent} 
                 onSuccess={() => setStep('success')} 
@@ -163,15 +254,15 @@ export const PublicFlow: React.FC = () => {
       )}
 
       {step === 'success' && (
-          <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
+          <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
                <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-8 animate-bounce">
                    <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                </div>
-               <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Submission Successful!</h2>
-               <p className="text-xl text-gray-600 max-w-lg leading-relaxed mb-8">
-                   Your clearance data and documents have been submitted to the A&U NG Admission Office. Please check your email regularly for updates.
+               <h2 className="text-4xl font-extrabold text-gray-900 mb-6">Submission Received!</h2>
+               <p className="text-xl text-gray-600 max-w-lg leading-relaxed mb-10">
+                   Your clearance data and documents have been successfully submitted to the A&U NG Admission Office.
                </p>
-               <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-colors">
+               <button onClick={() => window.location.reload()} className="px-10 py-4 border-2 border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50 hover:border-gray-400 transition-all">
                    Return to Home
                </button>
           </div>
